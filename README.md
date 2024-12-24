@@ -1,53 +1,73 @@
-# RLUSD-HR
-An idea to simplify cross-border payments using RLUSD / XRPL to hedge FIAT exchange fees and speedup payments 
+# XBorder-Pay
+An idea to simplify cross-border payments using RLUSD / XRPL to hedge FIAT exchange fees and speedup payments. 
 
-# XRPL RLUSD PoC
+# XBorder-Pay Demo
 
-A simple Proof of Concept (PoC) demonstrating how to issue and transfer a custom token (“RLUSD”) on the XRP Ledger using the **xrpl** JavaScript library.
+A Proof of Concept (PoC) for a cross-border HR payments solution built on the XRP Ledger (XRPL). This demo shows how to issue and transfer a token (RLUSD) for payroll or other HR use cases, including optional off-ledger business logic (e.g., limiting total issuance).
 
-## Overview
+## Features
 
-This PoC:
-1. Connects to the **XRPL Testnet**.  
-2. Generates and funds two wallets (an **issuer** and a **user**) via the **Testnet faucet**.  
-3. Creates a **trust line** from the user to the issuer for the RLUSD token.  
-4. Sends **RLUSD** from the issuer to the user.  
-5. Queries the user’s balance to confirm receipt of RLUSD.
+- **Issuer & Recipient Wallets**: Automatically funded via the XRPL Testnet faucet.  
+- **Default Ripple**: Optionally enable it on the issuer to facilitate IOU transfers.  
+- **Trust Line Creation**: The user “trusts” the issuer’s RLS token.  
+- **Send RLS**: Demonstrates how to create and transfer stablecoin-like tokens on XRPL.  
+- **Off-Ledger Business Logic**: Example of limiting total issuance (max tokens) on the client side.  
 
 ## Prerequisites
 
-- **Node.js** (v12+ recommended)
-- Installed dependencies:
-  ```bash
-  npm install xrpl
-  ```
+- **macOS** (this demo uses Homebrew).  
+- **Git**, if you want to clone or version your code.  
+- **XRPL Testnet** connectivity (internet connection).
 
-## Usage
+## Quick Start
 
-1. **Clone** or download this repository.  
-2. **Navigate** to the project folder:
+1. **Clone or Download** this repository.  
+2. **Run the Prep Script** to install and configure your environment:  
    ```bash
-   cd xrpl-rlusd-poc
+   chmod +x prep-demo.sh
+   ./prep-demo.sh
    ```
-3. **Install** dependencies:
+   - This script checks for Homebrew, installs/links Node 20, and creates a `xrpl-hr-demo` directory with an initialized `npm` project plus the `xrpl` library.
+
+3. **Navigate** to the `xrpl-hr-demo` directory:
    ```bash
-   npm install xrpl
+   cd xrpl-hr-demo
    ```
-4. **Run** the PoC:
-   ```bash
-   node poc.js
-   ```
+4. **Add / Paste** your PoC code into this directory (for example, a `demo.js`, `App.vue`, etc.).
+5. **Run** your code:
+   - If it’s a Node.js script:
+     ```bash
+     node demo.js
+     ```
+   - If it’s a Vue (or other framework) app:
+     ```bash
+     npm run serve
+     ```
+   - Adjust commands as needed for your specific setup.
 
-## Expected Output
+## Script & Directory Structure
 
-- Logs showing a successful connection to the XRPL testnet.  
-- Newly generated addresses for the **issuer** and **user**.  
-- Confirmation of the **TrustSet** transaction success.  
-- Confirmation of the **Payment** transaction success (sending RLUSD).  
-- Display of the user’s RLUSD balance.  
-- A final disconnect message from XRPL.
+- **`prep-demo.sh`**: A Bash script that:
+  - Verifies Homebrew is installed.
+  - Installs or updates **Node 20** via Homebrew.
+  - Creates the `xrpl-hr-demo` directory and initializes a Node project.
+  - Installs the `xrpl` library.
 
-## Notes
+- **`xrpl-hr-demo`**: The directory automatically created by the prep script.  
+  - **`package.json`**: Node.js project metadata.  
+  - **`node_modules/`**: Installed dependencies (including `xrpl`).  
+  - Place your PoC source files (e.g., `demo.js`, `App.vue`) here.
 
-- This is a **Testnet** demonstration only. Real XRP is **not** used, and all funds are test funds.  
-- For **production**, you’ll need to handle secrets securely, manage transaction fees, and handle off-ramping through an exchange or payment gateway if converting RLUSD to fiat currency.
+## License
+
+This demo is released under the **Mozilla Public License, v. 2.0**. A copy of the license text can be found at [mozilla.org/MPL/2.0/](https://mozilla.org/MPL/2.0/).  
+
+Under this license:
+
+- You must **preserve** this notice.  
+- You must **disclose** your source code if you distribute a **modified version** of this program.  
+
+## Author
+
+- **Alexander Alten**  
+  - GitHub Handle: [2pk03](https://github.com/2pk03)  
