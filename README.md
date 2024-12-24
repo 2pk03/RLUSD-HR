@@ -1,7 +1,6 @@
 # RLUSD-HR
 An idea to simplify cross-border payments using RLUSD / XRPL to hedge FIAT exchange fees and speedup payments 
 
-```md
 # XRPL RLUSD PoC
 
 A simple Proof of Concept (PoC) demonstrating how to issue and transfer a custom token (“RLUSD”) on the XRP Ledger using the **xrpl** JavaScript library.
