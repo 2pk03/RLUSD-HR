@@ -27,19 +27,13 @@ A Proof of Concept (PoC) for a cross-border HR payments solution built on the XR
    chmod +x prep-demo.sh
    ./prep-demo.sh
    ```
-   - This script checks for Homebrew, installs/links Node 20, and creates a `xrpl-hr-demo` directory with an initialized `npm` project plus the `xrpl` library.
+   - This script checks for Homebrew, installs/links Node 20, and creates a `XBorder-Pay` directory with an initialized `npm` project plus the `xrpl` library.
 
-3. **Navigate** to the `xrpl-hr-demo` directory:
+3. **Navigate** to the `XBorder-Pay` directory:
    ```bash
-   cd xrpl-hr-demo
+   cd XBorder-Pay
    ```
-4. **Add / Paste** your PoC code into this directory (for example, a `demo.js`, `App.vue`, etc.).
-5. **Run** your code:
-   - If it’s a Node.js script:
-     ```bash
-     node demo.js
-     ```
-   - If it’s a Vue (or other framework) app:
+4. **Run** XBorder-Pay
      ```bash
      npm run serve
      ```
@@ -50,13 +44,12 @@ A Proof of Concept (PoC) for a cross-border HR payments solution built on the XR
 - **`prep-demo.sh`**: A Bash script that:
   - Verifies Homebrew is installed.
   - Installs or updates **Node 20** via Homebrew.
-  - Creates the `xrpl-hr-demo` directory and initializes a Node project.
+  - Creates the `XBorder-Pay` directory and initializes a Node project.
   - Installs the `xrpl` library.
 
-- **`xrpl-hr-demo`**: The directory automatically created by the prep script.  
+- **`XBorder-Pay`**: The directory automatically created by the prep script.  
   - **`package.json`**: Node.js project metadata.  
-  - **`node_modules/`**: Installed dependencies (including `xrpl`).  
-  - Place your PoC source files (e.g., `demo.js`, `App.vue`) here.
+  - **`node_modules/`**: Installed dependencies (including `xrpl`).
 
 ## License
 
