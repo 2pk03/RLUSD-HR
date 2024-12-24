@@ -1,4 +1,4 @@
-# XBorder Payrol Idea
+# XRPayroll - Idea
 An idea to simplify cross-border payments using RLUSD / XRPL to hedge FIAT exchange fees and speedup payments. 
 
 # XBorder-Pay Demo
