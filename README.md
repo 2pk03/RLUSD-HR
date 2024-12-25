@@ -27,6 +27,9 @@ A Proof of Concept (PoC) for a cross-border HR payments solution built on the XR
 ```bash
      npm run dev
 ```
+ 
+ Go to ```localhost:8080```; password ```admin/adminpassword```
+
    - Adjust commands as needed for your specific setup.
 
 ## License
