@@ -24,9 +24,9 @@ A Proof of Concept (PoC) for a cross-border HR payments solution built on the XR
 ```
 
 ## Quick Start
-     ```bash
+```bash
      npm run dev
-     ```
+```
    - Adjust commands as needed for your specific setup.
 
 ## License
