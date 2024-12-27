@@ -20,7 +20,7 @@ A Proof of Concept (PoC) for a cross-border HR payments solution built on the XR
 - **Git**, if you want to clone or version your code.  
 - **XRPL Testnet** connectivity (internet connection).
 ```bash
-     npm install xrpl express cors multer csv-parser json2csv sqlite3 concurrently axios dotenv jsonwebtoken fs bcrypt jwt-decode express-validator vue-router@4 helmet morgan express-rate-limit
+     npm install xrpl express cors multer csv-parser json2csv sqlite3 concurrently axios dotenv jsonwebtoken fs bcrypt jwt-decode express-validator vue-router@4 helmet morgan express-rate-limit express-sslify sequelize body-parser
 ```
 
 ## Quick Start

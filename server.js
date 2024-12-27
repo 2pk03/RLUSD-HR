@@ -14,18 +14,21 @@
  * code if you distribute a modified version of this program.
  */
 
-require('dotenv').config(); // Load existing .env if present
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet'); // For security headers
 const morgan = require('morgan'); // For logging
 const rateLimit = require('express-rate-limit'); // For rate limiting
-const csvRoutes = require('./csvRoutes');
-const transactionRoutes = require('./router/transactionRoutes');
-const authRoutes = require('./router/authRoutes'); // Existing auth routes
-const userRoutes = require('./router/userRoutes'); // New user routes
-const employerRoutes = require('./router/employerRoutes');
-const employeeRoutes = require('./router/employeeRoutes');
+const enforce = require('express-sslify');
+const sequelize = require('./src/models/index');
+const csvRoutes = require('./src/routes/csvRoutes');
+const transactionRoutes = require('./src/routes/transactionRoutes');
+const authRoutes = require('./src/routes/authRoutes'); // Existing auth routes
+const userRoutes = require('./src/routes/userRoutes'); // New user routes
+const employerRoutes = require('./src/routes/employerRoutes');
+const employeeRoutes = require('./src/routes/employeeRoutes');
+const testnetRoutes = require('./src/routes/testnetRoutes'); // New Testnet routes
 const { getIssuerWalletAndJwtSecret } = require('./issuerWallet');
 
 const app = express();
@@ -40,6 +43,11 @@ app.use(cors()); // Enable CORS
 app.use(express.json()); // Parse JSON bodies
 app.use(morgan('combined')); // Log HTTP requests
 
+// Enforce HTTPS in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(enforce.HTTPS({ trustProtoHeader: true }));
+}
+
 // Rate Limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -53,6 +61,9 @@ app.use(limiter); // Apply rate limiting to all requests
 let issuerWallet;
 let jwtSecret;
 
+// Initialize XRPL Client in app.locals
+app.locals.xrplClient = null;
+
 // Routes
 app.use('/api/auth', authRoutes); 
 app.use('/api/users', userRoutes); 
@@ -60,6 +71,7 @@ app.use('/api/csv', csvRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/employers', employerRoutes);
 app.use('/api/employees', employeeRoutes);
+app.use('/api/testnet', testnetRoutes); // Mount the new Testnet routes
 
 // Root Endpoint
 app.get('/', (req, res) => {
@@ -95,3 +107,12 @@ async function startServer() {
 }
 
 startServer();
+
+// Graceful Shutdown
+process.on('SIGINT', async () => {
+  if (app.locals.xrplClient && app.locals.xrplClient.isConnected()) {
+    await app.locals.xrplClient.disconnect();
+    console.log('Disconnected from XRPL Testnet.');
+  }
+  process.exit();
+});

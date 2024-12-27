@@ -1,7 +1,7 @@
 /*
- * userRoutes.js
+ * database.js
  * 
- * Defines API routes for user management, including fetching, updating, and deleting user records.
+ * Sets up the SQLite database, initializes tables, and ensures data integrity through foreign key constraints.
  * 
  * Copyright (c) 2024 Alexander Alten
  * GitHub Handle: 2pk03
@@ -14,29 +14,29 @@
  * code if you distribute a modified version of this program.
  */
 
-const sqlite3 = require('sqlite3').verbose()
-const path = require('path')
-const bcrypt = require('bcrypt') // Added bcrypt for password hashing
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const bcrypt = require('bcrypt');
 
 // Initialize SQLite database
 const db = new sqlite3.Database(path.resolve(__dirname, 'XRPayroll.db'), (err) => {
   if (err) {
-    console.error('Error opening database:', err.message)
-    process.exit(1)
+    console.error('Error opening database:', err.message);
+    process.exit(1);
   } else {
-    console.log('Connected to SQLite database.')
-    db.run('PRAGMA foreign_keys = ON;', (err) => { // Enable foreign key constraints
+    console.log('Connected to SQLite database.');
+    db.run('PRAGMA foreign_keys = ON;', (err) => {
       if (err) {
-        console.error('Failed to enable foreign keys:', err.message)
-        process.exit(1)
+        console.error('Failed to enable foreign keys:', err.message);
+        process.exit(1);
       }
-    })
+    });
   }
-})
+});
 
 // Initialize the database tables
 db.serialize(() => {
-  // Create the users table with a CHECK constraint on role
+  // Users Table
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +52,7 @@ db.serialize(() => {
     console.log('Users table is ready.');
   });
 
-  // Create the employers table
+  // Employers Table
   db.run(`
     CREATE TABLE IF NOT EXISTS employers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,13 +66,15 @@ db.serialize(() => {
     console.log('Employers table is ready.');
   });
 
-  // Create the employees table
+  // Employees Table
   db.run(`
     CREATE TABLE IF NOT EXISTS employees (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userID INTEGER UNIQUE NOT NULL,
       employerID INTEGER NOT NULL,
       payrollAmount REAL NOT NULL,
+      wallet_address TEXT,
+      wallet_seed TEXT,
       FOREIGN KEY (userID) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (employerID) REFERENCES employers(id) ON DELETE CASCADE
     )
@@ -84,7 +86,7 @@ db.serialize(() => {
     console.log('Employees table is ready.');
   });
 
-  // Create the transactions table with corrected foreign key
+  // Transactions Table
   db.run(`
     CREATE TABLE IF NOT EXISTS transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +94,7 @@ db.serialize(() => {
       amount REAL NOT NULL,
       wallet_address TEXT NOT NULL,
       date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      status TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('Success', 'Failure')),
       tx_id TEXT,
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
     )
@@ -104,7 +106,24 @@ db.serialize(() => {
     console.log('Transactions table is ready.');
   });
 
-  // Insert a default employer if not exists
+  // Add indexes for performance
+  db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_employee_id ON transactions(employee_id)`, (err) => {
+    if (err) {
+      console.error('Failed to create index on transactions.employee_id:', err.message);
+    } else {
+      console.log('Index on transactions.employee_id is ready.');
+    }
+  });
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)`, (err) => {
+    if (err) {
+      console.error('Failed to create index on transactions.date:', err.message);
+    } else {
+      console.log('Index on transactions.date is ready.');
+    }
+  });
+
+  // Insert default employer
   db.get('SELECT * FROM employers WHERE name = ?', ['Default Employer'], (err, row) => {
     if (err) {
       console.error('Error querying employers:', err.message);
@@ -124,7 +143,7 @@ db.serialize(() => {
     }
   });
 
-  // Insert a default admin user if not exists
+  // Insert default admin user
   db.get('SELECT * FROM users WHERE username = ?', ['admin'], async (err, user) => {
     if (err) {
       console.error('Error querying users:', err.message);
@@ -151,4 +170,4 @@ db.serialize(() => {
   });
 });
 
-module.exports = db
+module.exports = db;

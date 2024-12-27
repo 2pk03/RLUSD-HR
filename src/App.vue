@@ -2,13 +2,7 @@
 
 <template>
   <div id="app">
-    <nav>
-      <router-link to="/">Home</router-link>
-      <router-link to="/users" v-if="isAdmin">User Management</router-link>
-      <router-link to="/login" v-if="!isAuthenticated">Login</router-link>
-      <button @click="logout" v-if="isAuthenticated">Logout</button>
-    </nav>
-    <router-view />
+  <router-view />
   </div>
 </template>
 

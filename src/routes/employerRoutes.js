@@ -19,7 +19,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { body, validationResult, param } = require('express-validator');
-const db = require('../database'); // Ensure the path is correct
+const db = require('../../database');
 
 // Middleware to authenticate JWT tokens
 const authenticate = (req, res, next) => {

@@ -1,7 +1,6 @@
 <template>
   <div class="home-page">
-    <h1>Welcome to XRPayroll Dashboard</h1>
-    <p>You are successfully logged in.</p>
+    
   </div>
 </template>
 

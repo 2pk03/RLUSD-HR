@@ -15,10 +15,10 @@
  */
 
 const express = require('express');
-const { getIssuerWalletAndJwtSecret } = require('../issuerWallet'); // Correct path
-const db = require('../database');
+const { getIssuerWalletAndJwtSecret } = require('../../issuerWallet');
+const db = require('../../database');
 const xrpl = require('xrpl');
-const { authenticateToken, authorizeRole } = require('./authMiddleware');
+const { authenticateToken, authorizeRole } = require('../controllers/authMiddleware');
 const router = express.Router();
 
 /**

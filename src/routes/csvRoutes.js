@@ -19,8 +19,8 @@ const express = require('express')
 const multer = require('multer')
 const csvParser = require('csv-parser')
 const { Parser } = require('json2csv')
-const db = require('./database')
-const { authenticateToken, authorizeRole } = require('./router/authMiddleware') // **Added**
+const db = require('../../database')
+const { authenticateToken, authorizeRole } = require('../controllers/authMiddleware')
 const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage() })
 

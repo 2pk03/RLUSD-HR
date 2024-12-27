@@ -1,17 +1,4 @@
-/*
- * RLUSD Cross-Border Employee Demo
- * 
- * Copyright (c) 2024 Alexander Alten
- * GitHub Handle: 2pk03
- * 
- * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
- * If a copy of the MPL was not distributed with this file, You can obtain one at
- * http://mozilla.org/MPL/2.0/.
- *
- * Under the MPL, you must preserve this notice. You must also disclose your source 
- * code if you distribute a modified version of this program.
- */
-
+<!-- src/components/LoginPage.vue -->
 <template>
   <div class="login-container">
     <h2>Login</h2>
@@ -38,7 +25,9 @@
         />
       </div>
 
-      <button type="submit">Login</button>
+      <button type="submit" :disabled="loading">
+        {{ loading ? 'Logging in...' : 'Login' }}
+      </button>
     </form>
 
     <div v-if="error" class="error-message">
@@ -50,7 +39,6 @@
 
 <script>
 import axios from 'axios';
-import { useRouter } from 'vue-router';
 
 export default {
   name: 'LoginPage',
@@ -61,17 +49,15 @@ export default {
       error: false,
       errorMessage: '',
       errorDetails: null,
+      loading: false,
     };
-  },
-  setup() {
-    const router = useRouter();
-    return { router };
   },
   methods: {
     async login() {
       this.error = false;
       this.errorMessage = '';
       this.errorDetails = null;
+      this.loading = true;
 
       try {
         console.log('Attempting to log in with:', {
@@ -92,6 +78,31 @@ export default {
           localStorage.setItem('token', token);
           console.log('JWT token stored in localStorage.');
 
+          // Decode token to store user info
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            localStorage.setItem(
+              'user',
+              JSON.stringify({
+                username: payload.username,
+                role: payload.role,
+              })
+            );
+            console.log(
+              'User info stored in localStorage:',
+              payload.username,
+              payload.role
+            );
+          } catch (decodeError) {
+            console.error(
+              'Error decoding token payload:',
+              decodeError.message
+            );
+            this.error = true;
+            this.errorMessage = 'Failed to decode authentication token.';
+            return;
+          }
+
           // Redirect to Home after successful login
           this.$router.push({ name: 'Home' });
         } else {
@@ -103,8 +114,13 @@ export default {
         this.error = true;
         if (err.response) {
           // Server responded with a status other than 2xx
-          this.errorMessage = err.response.data.message || 'Login failed.';
-          this.errorDetails = JSON.stringify(err.response.data, null, 2);
+          this.errorMessage =
+            err.response.data.message || 'Login failed.';
+          this.errorDetails = JSON.stringify(
+            err.response.data,
+            null,
+            2
+          );
           console.error('Login failed with response:', err.response);
         } else if (err.request) {
           // Request was made but no response received
@@ -117,6 +133,8 @@ export default {
           this.errorDetails = err.message;
           console.error('Error setting up request:', err.message);
         }
+      } finally {
+        this.loading = false;
       }
     },
   },

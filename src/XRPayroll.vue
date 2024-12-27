@@ -14,76 +14,112 @@
  
 <template>
   <div class="container">
-    <h1>XRPayroll Dashboard</h1>
-    <p><strong>Status:</strong> {{ status }}</p>
-
-    <!-- Admin Navigation Link -->
-    <div v-if="isAdmin" class="admin-navigation">
-      <router-link to="/user-management">
-        <button>Manage Users</button>
-      </router-link>
-    </div>
-
-    <div class="buttons">
-      <!-- 1) Connect & 2) Generate Wallets -->
-      <button @click="connectXRPL">1) Connect to Testnet</button>
-      <button @click="generateWallets">2) Generate Wallets</button>
-      <br /><br />
-
-      <!-- Fund the Issuer again from the faucet (adds more test XRP) -->
-      <button @click="fundIssuer" :disabled="!issuerWallet">
-        Fund Issuer (Sender)
-      </button>
-      <!-- Enable Default Ripple on the Issuer -->
-      <button @click="enableDefaultRipple" :disabled="!issuerWallet">
-        Enable Default Ripple (Issuer)
-      </button>
-      <br /><br />
-
-      <!-- Create Trust Line -->
-      <button @click="createTrustLine" :disabled="!issuerWallet || !userWallet">
-        3) Create RLUSD Trust Line
-      </button>
-
-      <!-- Amount + Send RLS -->
-      <div class="send-section">
-        <label for="sendAmount">Amount (RLUSD):</label>
-        <input
-          id="sendAmount"
-          type="number"
-          v-model="sendAmount"
-          :disabled="!issuerWallet || !userWallet"
-        />
-        <button @click="sendRLS" :disabled="!issuerWallet || !userWallet">
-          4) Send RLUSD
-        </button>
+    <!-- Header Section -->
+    <header class="header">
+      <h1>XRPayroll Dashboard</h1>
+      <!-- User Information and Logout Button -->
+      <div class="user-info" v-if="user.username">
+        <span>Welcome, {{ user.username }} ({{ user.role }})</span>
+        <button class="logout-button" @click="handleLogout">Logout</button>
       </div>
+    </header>
 
+    <!-- Navigation Links -->
+    <nav class="navigation">
+     <!-- Role-Based Additional Navigation Links -->
+      <div class="additional-links">
+        <!-- Admin-Only Links -->
+        <div v-if="isAdmin">
+          <router-link to="/admin">
+            <button :class="{ active: isActive('/admin') }">Admin Panel</button>
+          </router-link>
+          <router-link to="/trustlines">
+            <button :class="{ active: isActive('/trustlines') }">Manage Trust Lines</button>
+          </router-link>
+          <router-link to="/payments">
+            <button :class="{ active: isActive('/payments') }">Handle Payments</button>
+          </router-link>
+          <router-link to="/register">
+            <button :class="{ active: isActive('/register') }">Register User</button>
+          </router-link>
+        </div>
+
+        <!-- Employee-Only Links -->
+        <div v-if="isEmployee">
+          <router-link to="/profile">
+            <button :class="{ active: isActive('/profile') }">My Profile</button>
+          </router-link>
+        </div>
+      </div>
+    </nav>
+  
+<!-- Buttons Section -->
+  <div class="buttons">
+    <!-- Admin-Only Buttons -->
+    <div v-if="isAdmin">
+      <!-- 1) Connect to Testnet -->
+      <button @click="connectXRPL" :disabled="connecting">
+        1) Connect to Testnet
+      </button>
       <br /><br />
 
-      <!-- Check Issuer RLUSD Balance -->
-      <button @click="getIssuerRlsBalance" :disabled="!issuerWallet">
-        Get Issuer RLUSD Balance
+      <!-- Fund Issuer -->
+      <button @click="fundIssuer" :disabled="!connected || fundingInProgress">
+        Fund & Set Default
       </button>
-      <!-- Disconnect -->
-      <button @click="disconnectXRPL">
+      <br /><br />
+
+      <!-- Disconnect Button -->
+      <button @click="disconnectXRPL" :disabled="!connected">
         Disconnect
       </button>
     </div>
+  </div>
 
     <!-- Issuer (Sender) Info -->
     <div class="wallet-info">
       <h3>Issuer (Sender) Wallet</h3>
-      <p><strong>Address:</strong> {{ issuerWallet?.classicAddress || 'N/A' }}</p>
-      <!-- Show the issuer's RLS balance (can be negative or 0) -->
+      <p><strong>Address:</strong> {{ issuerWallet || 'N/A' }}</p>
       <p><strong>RLUSD Balance:</strong> {{ issuerRlsBalance }}</p>
     </div>
+    <!-- Employee Records -->
+    <section class="employee-records">
+      <h2>Employee Records</h2>
+      <button @click="loadEmployees" :disabled="!connected">Refresh Employees</button>
+      <table v-if="employeeRecords.length">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Employee ID</th>
+            <th>Salary (RLUSD)</th>
+            <th>Wallet Address</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="emp in employeeRecords" :key="emp.employee_id">
+            <td>{{ emp.name }}</td>
+            <td>{{ emp.employee_id }}</td>
+            <td>{{ emp.salary }}</td>
+            <td>{{ emp.wallet_address || 'No Wallet' }}</td>
+            <td>
+              <button 
+                @click="executeSalary(emp)" 
+                :disabled="salaryExecutionInProgress || !connected"
+                >
+                Execute Salary
+          </button>
 
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else>No employee records available.</p>
+    </section>
     <!-- User (Recipient) Info -->
     <div class="wallet-info">
       <h3>User (Recipient) Wallet</h3>
-      <p><strong>Address:</strong> {{ userWallet?.classicAddress || 'N/A' }}</p>
-      <!-- Only show the last RLUSD transaction -->
+      <p><strong>Address:</strong> {{ selectedEmployeeWallet || 'N/A' }}</p>
       <p><strong>Latest RLUSD Transaction:</strong> {{ userLatestTx || 'None' }}</p>
     </div>
 
@@ -107,58 +143,42 @@
       </div>
     </section>
 
-    <!-- Employee Records -->
-    <section class="employee-records">
-      <h2>Employee Records</h2>
-      <button @click="loadEmployees" :disabled="!issuerWallet">Refresh Employees</button>
-      <table v-if="employeeRecords.length">
-  <thead>
-    <tr>
-      <th>Name</th>
-      <th>Employee ID</th>
-      <th>Salary (RLUSD)</th>
-      <th>Wallet Address</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr v-for="emp in employeeRecords" :key="emp.employee_id">
-      <td>{{ emp.name }}</td>
-      <td>{{ emp.employee_id }}</td>
-      <td>{{ emp.salary }}</td>
-      <td>{{ emp.wallet_address }}</td>
-    </tr>
-  </tbody>
-</table>
-<p v-else>No employee records available.</p>
-    </section>
-
-    <!-- Transaction History -->
+  <!-- Transaction History -->
     <section class="transaction-history">
       <h2>Transaction History</h2>
-      <button @click="loadTransactions" :disabled="!issuerWallet">Refresh History</button>
+      <button @click="loadTransactions" :disabled="!connected">Refresh History</button>
       <table v-if="transactions.length">
         <thead>
           <tr>
-            <th>Transaction ID</th>
-            <th>Employee ID</th>
-            <th>Amount (RLUSD)</th>
-            <th>Wallet Address</th>
-            <th>Date</th>
-            <th>Status</th>
-            <th>XRPL TxID</th>
+            <th>Name</th>
+    <th>Employee ID</th>
+    <th>Salary (RLUSD)</th>
+    <th>Wallet Address</th>
+    <th>Last Transaction</th>
+    <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="tx in transactions" :key="tx.id">
-            <td>{{ tx.id }}</td>
-            <td>{{ tx.employee_id }}</td>
-            <td>{{ tx.amount }}</td>
-            <td>{{ tx.wallet_address }}</td>
-            <td>{{ new Date(tx.date).toLocaleString() }}</td>
-            <td>{{ tx.status }}</td>
-            <td>{{ tx.tx_id || 'N/A' }}</td>
-          </tr>
-        </tbody>
+  <tr v-for="emp in employeeRecords" :key="emp.employee_id">
+    <td>{{ emp.name }}</td>
+    <td>{{ emp.employee_id }}</td>
+    <td>{{ emp.salary }}</td>
+    <td>{{ emp.wallet_address || 'No Wallet' }}</td>
+    <td>
+      <span :class="{'success': emp.last_transaction_status === 'Success', 'failure': emp.last_transaction_status !== 'Success'}">
+        {{ formatTransactionDetails(emp) }}
+      </span>
+    </td>
+    <td>
+      <button 
+        @click="executeSalary(emp)" 
+        :disabled="salaryExecutionInProgress || !connected"
+      >
+        Execute Salary
+      </button>
+    </td>
+  </tr>
+</tbody>
       </table>
       <p v-else>No transactions found.</p>
     </section>
@@ -190,9 +210,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { Client } from 'xrpl';
 import axios from 'axios';
-import jwtDecode from 'jwt-decode'; // Ensure jwt-decode is installed
+import { jwtDecode } from 'jwt-decode';
+import { useRouter, useRoute } from 'vue-router';
 
 // ----------------------------------------------------------------------------
 // LOGGING
@@ -213,6 +233,22 @@ const logLevels = [
 
 const selectedLogLevel = ref('DEBUG');
 const logs = ref([]);
+const requestWalletInProgress = ref(false);
+
+function formatTransactionDetails(emp) {
+  if (!emp.last_transaction) {
+    return 'No transaction available';
+  }
+  const formattedDate = new Date(emp.last_transaction_date).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  return `${emp.last_transaction_status} on ${formattedDate}`;
+}
 
 function addLog(level, message) {
   logs.value.push({
@@ -240,334 +276,327 @@ function decodeToken() {
   const token = localStorage.getItem('token');
   if (token) {
     try {
-      const decoded = jwtDecode(token);
+      const decoded = jwtDecode(token); // Ensure jwtDecode is correctly imported
       user.value.username = decoded.username;
       user.value.role = decoded.role;
       addLog('INFO', `Logged in as ${decoded.username} with role ${decoded.role}`);
     } catch (error) {
       console.error('Error decoding token:', error);
       addLog('ERROR', 'Invalid token. Please log in again.');
+      alert('Invalid token. Please log in again.');
     }
+  } else {
+    addLog('WARN', 'No token found. Please log in.');
+    alert('No token found. Please log in.');
   }
 }
 
 const isAdmin = computed(() => user.value.role === 'admin');
+const isEmployee = computed(() => user.value.role === 'employee');
 
-// ----------------------------------------------------------------------------
-// XRPL
-// ----------------------------------------------------------------------------
+const router = useRouter();
+const route = useRoute();
+
+// Function to check if a path is active for styling
+const isActive = (path) => {
+  return route.path === path;
+};
+
+// Logout Handler
+function handleLogout() {
+  // Clear token and user info from localStorage
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  user.value = { username: '', role: '' };
+  addLog('INFO', 'User logged out.');
+  // Redirect to Login page
+  router.push({ name: 'Login' });
+}
+
+// connect defaults
 const status = ref('Disconnected from XRPL');
-const client = ref(null);
+const connected = ref(false);
 
-// Issuer & User wallets
-const issuerWallet = ref(null);
-const userWallet   = ref(null);
-
-// Stable coin code: "RLS"
-const CURRENCY_CODE = 'RLS';
+// Issuer & Selected Employee Wallets
+const issuerWallet = ref('');
+const selectedEmployeeWallet = ref('');
 
 // Store the issuer's RLS balance
-const issuerRlsBalance = ref('0');
+const issuerRlsBalance = ref('');
 // Store the user's latest transaction
 const userLatestTx = ref(null);
 
-// Send amount (default 50 RLS)
-const sendAmount = ref('50');
-
-// Define a maximum issuance limit (application-level)
-const MAX_RLS_ISSUANCE = 1000;
-
-// ----------------------------------------------------------------------------
-// 1) CONNECT
-// ----------------------------------------------------------------------------
+// connect to XRPL Testnet
 async function connectXRPL() {
-  status.value = 'Connecting...';
-  addLog('INFO', 'Connecting to XRPL Testnet...');
-  try {
-    const xrplClient = new Client('wss://s.altnet.rippletest.net:51233');
-    await xrplClient.connect();
-    client.value = xrplClient;
-    status.value = 'Connected to XRPL Testnet!';
-    addLog('INFO', 'Connected to XRPL Testnet.');
-  } catch (error) {
-    status.value = 'Connection failed!';
-    addLog('ERROR', `Failed to connect: ${error.message}`);
-    console.error(error);
-  }
+    status.value = 'Connecting to XRPL Testnet...';
+    addLog('INFO', 'Initiating connection to XRPL Testnet...');
+  
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            throw new Error('Authentication token not found. Please log in.');
+        }
+
+        // Connect to XRPL Testnet
+        const connectResp = await axios.post('/api/testnet/connect', {}, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (connectResp.data && connectResp.data.address) {
+            issuerWallet.value = connectResp.data.address;
+            connected.value = true;
+            status.value = 'Connected to XRPL Testnet!';
+            addLog('INFO', `Connected to XRPL Testnet with issuer ${issuerWallet.value}`);
+            
+            // Fetch updated RLUSD balance after connecting
+            await getIssuerRlsBalance();
+        } else {
+            throw new Error('Unexpected response from the server during connection.');
+        }
+    } catch (error) {
+        status.value = 'Connection failed!';
+        const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+        addLog('ERROR', `Failed to connect to XRPL Testnet: ${errorMessage}`);
+        console.error(error);
+        alert(`Connection Error: ${errorMessage}`);
+    }
 }
 
-// ----------------------------------------------------------------------------
-// 2) GENERATE WALLETS
-// ----------------------------------------------------------------------------
-async function generateWallets() {
-  if (!client.value) {
-    alert('Connect first!');
-    return;
-  }
-  status.value = 'Generating wallets...';
-  addLog('INFO', 'Requesting new wallets from Testnet faucet...');
+// fund issuer wallet, enable default ripple, track funding progress
+const fundingInProgress = ref(false);
 
-  try {
-    const issuerResp = await client.value.fundWallet();
-    const userResp   = await client.value.fundWallet();
-
-    issuerWallet.value = issuerResp.wallet;
-    userWallet.value   = userResp.wallet;
-
-    status.value = 'Wallets generated!';
-    addLog('INFO', `Issuer: ${issuerWallet.value.classicAddress}`);
-    addLog('INFO', `User:   ${userWallet.value.classicAddress}`);
-
-    // Optionally, load employees and transactions if connected
-    loadEmployees();
-    loadTransactions();
-  } catch (error) {
-    status.value = 'Wallet generation failed!';
-    addLog('ERROR', `Failed to generate wallets: ${error.message}`);
-    console.error(error);
-  }
-}
-
-// ----------------------------------------------------------------------------
-// 3) FUND ISSUER
-// ----------------------------------------------------------------------------
+// Fund Issuer Wallet
 async function fundIssuer() {
-  if (!client.value || !issuerWallet.value) {
-    alert('Need issuer wallet first!');
-    return;
-  }
-  status.value = 'Funding issuer wallet...';
-  addLog('INFO', 'Calling faucet to re-fund issuer wallet...');
+    fundingInProgress.value = true;
+    status.value = 'Funding issuer wallet...';
+    addLog('INFO', 'Requesting backend to fund issuer wallet and set default.');
 
-  try {
-    await client.value.fundWallet({ wallet: issuerWallet.value });
-    status.value = 'Issuer funded with more test XRP.';
-    addLog('INFO', 'Issuer re-funded successfully.');
-  } catch (error) {
-    status.value = 'Funding failed!';
-    addLog('ERROR', `Exception: ${error.message}`);
-    console.error(error);
-  }
-}
+    try {
+        const token = localStorage.getItem('token');
+        const response = await axios.post('/api/testnet/fund-issuer', {}, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
 
-// ----------------------------------------------------------------------------
-// 4) ENABLE DEFAULT RIPPLE (ISSUER)
-// ----------------------------------------------------------------------------
-async function enableDefaultRipple() {
-  if (!client.value || !issuerWallet.value) {
-    alert('Need issuer wallet first!');
-    return;
-  }
-  status.value = 'Enabling Default Ripple...';
-  addLog('INFO', 'Sending AccountSet to enable Default Ripple on issuer...');
+        status.value = 'Issuer wallet funded successfully.';
+        addLog('INFO', response.data.message);
+        connected.value = true;
 
-  const tx = {
-    TransactionType: 'AccountSet',
-    Account: issuerWallet.value.classicAddress,
-    // asfDefaultRipple = 8
-    SetFlag: 8
-  };
-
-  try {
-    const prepared = await client.value.autofill(tx);
-    const signed   = issuerWallet.value.sign(prepared);
-    const result   = await client.value.submitAndWait(signed.tx_blob);
-    const tr       = result.result.meta.TransactionResult;
-
-    if (tr === 'tesSUCCESS') {
-      status.value = 'Default Ripple enabled!';
-      addLog('INFO', 'Issuer default ripple is ON.');
-    } else {
-      status.value = 'Failed to enable Default Ripple!';
-      addLog('ERROR', `AccountSet failed: ${tr}`);
+        // Fetch updated balance
+        await getIssuerRlsBalance();
+    } catch (error) {
+        status.value = 'Funding issuer wallet failed.';
+        addLog('ERROR', `Error funding issuer wallet: ${error.response?.data?.message || error.message}`);
+        console.error(error);
+    } finally {
+        fundingInProgress.value = false;
     }
-  } catch (error) {
-    status.value = 'AccountSet failed!';
-    addLog('ERROR', `Exception: ${error.message}`);
-    console.error(error);
-  }
-}
 
-// ----------------------------------------------------------------------------
-// 5) CREATE TRUST LINE (USER -> ISSUER) FOR RLS
-// ----------------------------------------------------------------------------
-async function createTrustLine() {
-  if (!client.value || !issuerWallet.value || !userWallet.value) {
-    alert('Connect + wallets first!');
-    return;
-  }
-  status.value = 'Creating RLS trust line...';
-  addLog('INFO', 'Preparing TrustSet for RLS...');
-
-  const trustSetTx = {
-    TransactionType: 'TrustSet',
-    Account: userWallet.value.classicAddress,
-    LimitAmount: {
-      currency: CURRENCY_CODE,
-      issuer: issuerWallet.value.classicAddress,
-      value: '1000'
-    }
-  };
-
+  // Enable Default Ripple
   try {
-    const prepared = await client.value.autofill(trustSetTx);
-    const signed   = userWallet.value.sign(prepared);
-    const result   = await client.value.submitAndWait(signed.tx_blob);
-    const tr       = result.result.meta.TransactionResult;
-
-    if (tr === 'tesSUCCESS') {
-      status.value = 'RLS trust line established!';
-      addLog('INFO', 'User now trusts RLS from issuer.');
-    } else {
-      status.value = 'Trust line creation failed!';
-      addLog('ERROR', `TrustSet failed: ${tr}`);
-    }
-  } catch (error) {
-    status.value = 'Trust line creation failed!';
-    addLog('ERROR', `Exception: ${error.message}`);
-    console.error(error);
-  }
-}
-
-// ----------------------------------------------------------------------------
-// 6) SEND RLS (ISSUER -> USER) WITH BUSINESS LOGIC CHECK
-// ----------------------------------------------------------------------------
-async function sendRLS() {
-  if (!client.value || !issuerWallet.value || !userWallet.value) {
-    alert('Connect + wallets first!');
-    return;
-  }
-
-  // 1) Refresh the issuer's RLS balance to see how many tokens are already issued.
-  await getIssuerRlsBalance(); // This updates `issuerRlsBalance.value`
-
-  // issuerRlsBalance might be negative (e.g., -300 means 300 tokens in circulation)
-  const inCirculation = Math.abs(parseFloat(issuerRlsBalance.value) || 0);
-  const requestToSend = parseFloat(sendAmount.value) || 0;
-
-  // 2) Check if inCirculation + requestToSend > MAX_RLS_ISSUANCE
-  if (inCirculation + requestToSend > MAX_RLS_ISSUANCE) {
-    alert(`Cannot issue more than ${MAX_RLS_ISSUANCE} RLS in total. 
-Already in circulation: ${inCirculation}, attempted to send ${requestToSend}.`);
-    return;
-  }
-
-  // 3) If OK, proceed with Payment transaction
-  status.value = `Sending ${sendAmount.value} RLS...`;
-  addLog('INFO', `Preparing Payment for ${sendAmount.value} RLS...`);
-
-  const paymentTx = {
-    TransactionType: 'Payment',
-    Account: issuerWallet.value.classicAddress,
-    Destination: userWallet.value.classicAddress,
-    Amount: {
-      currency: CURRENCY_CODE,
-      issuer: issuerWallet.value.classicAddress,
-      value: String(sendAmount.value)
-    },
-    // Use SendMax to avoid partial paths
-    SendMax: {
-      currency: CURRENCY_CODE,
-      issuer: issuerWallet.value.classicAddress,
-      value: String(sendAmount.value)
-    }
-  };
-
-  try {
-    const prepared = await client.value.autofill(paymentTx);
-    const signed   = issuerWallet.value.sign(prepared);
-    const result   = await client.value.submitAndWait(signed.tx_blob);
-    const tr       = result.result.meta.TransactionResult;
-
-    if (tr === 'tesSUCCESS') {
-      status.value = `Sent ${sendAmount.value} RLS!`;
-      addLog('INFO', `Issued ${sendAmount.value} RLS to user.`);
-
-      // Update user's "latest transaction"
-      userLatestTx.value = `Received ${sendAmount.value} RLS`;
-
-      // Log transaction in backend
-      logTransaction(userWallet.value.classicAddress, sendAmount.value, tr);
-    } else {
-      status.value = 'Payment failed!';
-      addLog('ERROR', `Payment failed: ${tr}`);
-    }
-  } catch (error) {
-    status.value = 'Payment failed!';
-    addLog('ERROR', `Exception: ${error.message}`);
-    console.error(error);
-  }
-}
-
-// ----------------------------------------------------------------------------
-// LOG TRANSACTION TO BACKEND
-// ----------------------------------------------------------------------------
-async function logTransaction(walletAddress, amount, txId) {
-  // Extract employee_id based on wallet_address
-  try {
-    const resp = await axios.get('/api/employees', {
-      params: { wallet_address: walletAddress }
+    const token = localStorage.getItem('token');
+    const response = await axios.post('/api/testnet/enable-ripple', {}, {
+      headers: { Authorization: `Bearer ${token}` },
     });
-    const employees = resp.data;
-    if (employees.length === 0) {
-      addLog('WARN', `No employee found for wallet address: ${walletAddress}`);
-      return;
-    }
-    const employee = employees[0];
 
-    // Log transaction via backend
-    await axios.post('/api/transactions', {
-      employee_id: employee.employee_id,
-      amount: amount,
-      wallet_address: walletAddress,
-      tx_id: txId
-    });
-    addLog('INFO', `Transaction logged for employee ID ${employee.employee_id}`);
+    status.value = 'Default enabled.';
+    addLog('INFO', response.data.message);
+    connected.value = true; // Set connected to true after funding
   } catch (error) {
-    addLog('ERROR', `Failed to log transaction: ${error.message}`);
+    status.value = 'Something went wrong.';
+    addLog('ERROR', `Error enabling default: ${error.response?.data?.message || error.message}`);
     console.error(error);
+  } finally {
+    fundingInProgress.value = false;
   }
 }
 
-// ----------------------------------------------------------------------------
-// GET ISSUER RLS BALANCE
-// ----------------------------------------------------------------------------
+// Track salary execution progress
+const salaryExecutionInProgress = ref(false);
+
+/// Execute Salary Workflow: Create Wallet, Trust Line, and Send Salary
+async function executeSalary(employee) {
+    if (!employee || !employee.employee_id) {
+        alert('Invalid employee information.');
+        return;
+    }
+
+    salaryExecutionInProgress.value = true;
+    status.value = `Executing salary for employee: ${employee.name}...`;
+    addLog('INFO', `Initiating salary execution for employee: ${employee.name}`);
+
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            throw new Error('Authentication token not found. Please log in.');
+        }
+
+        // Step 1: Ensure Wallet Exists and Is Active
+        if (!employee.wallet_address) {
+            await createWalletForEmployee(employee, token);
+        } else {
+            const isActive = await checkWalletActivation(employee.wallet_address, token);
+            if (!isActive) {
+                await fundWalletForActivation(employee.wallet_address, token);
+            }
+        }
+
+        // Step 2: Establish Trust Line (if not already established)
+        const walletSeedResponse = await axios.post(
+            '/api/testnet/employees/get-wallet-seed',
+            { employeeID: employee.employee_id },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const employeeWalletSeed = walletSeedResponse.data.walletSeed;
+        if (!employeeWalletSeed) {
+            throw new Error('Employee wallet seed is not available.');
+        }
+
+        await axios.post(
+            '/api/testnet/trustlines/create',
+            {
+                employeeWalletSeed,
+                issuerAddress: issuerWallet.value,
+                limit: '1000000', // Generic trust line limit
+            },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        addLog('INFO', `Trust line established for ${employee.wallet_address}`);
+
+        // Step 3: Send Salary
+        const salaryAmount = parseFloat(employee.salary) || 0;
+        if (salaryAmount <= 0) {
+            throw new Error('Invalid salary amount.');
+        }
+
+        await axios.post(
+            '/api/testnet/payments/send',
+            { employeeWallet: employee.wallet_address, amount: salaryAmount },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        addLog('INFO', `Salary of ${salaryAmount} RLUSD sent to ${employee.wallet_address}`);
+
+        // Step 4: Refresh Issuer Balance
+        await getIssuerRlsBalance();
+
+        alert(`Salary executed successfully for ${employee.name}`);
+    } catch (error) {
+        status.value = 'Salary execution failed!';
+        const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+        addLog('ERROR', `Failed to execute salary for ${employee.name}: ${errorMessage}`);
+        alert(`Error: ${errorMessage}`);
+    } finally {
+        salaryExecutionInProgress.value = false;
+        await loadEmployees(); // Refresh the employee list
+    }
+}
+
+// Helper Function: Create Wallet for Employee
+async function createWalletForEmployee(employee, token) {
+    requestWalletInProgress.value = true;
+    status.value = `Creating wallet for ${employee.name}...`;
+    addLog('INFO', `Creating wallet for employee ID: ${employee.employee_id}`);
+
+    try {
+        const walletResponse = await axios.post(
+            '/api/testnet/employees/request-wallet',
+            { employeeID: employee.employee_id },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        employee.wallet_address = walletResponse.data.walletAddress;
+        addLog('INFO', `Wallet created: ${employee.wallet_address}`);
+        status.value = `Wallet created successfully for ${employee.name}`;
+
+        await fundWalletForActivation(employee.wallet_address, token);
+    } catch (error) {
+        throw new Error(`Failed to create wallet: ${error.response?.data?.message || error.message}`);
+    } finally {
+        requestWalletInProgress.value = false;
+    }
+}
+
+// Helper Function: Check Wallet Activation
+async function checkWalletActivation(walletAddress, token) {
+    status.value = `Checking activation for wallet: ${walletAddress}...`;
+    addLog('INFO', `Checking activation status for wallet: ${walletAddress}`);
+
+    try {
+        const response = await axios.post(
+            '/api/testnet/wallet/verify',
+            { walletAddress },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        if (response.data.activated) {
+            addLog('INFO', `Wallet is active: ${walletAddress}`);
+            return true;
+        }
+    } catch (error) {
+        if (error.response?.data?.error === 'actNotFound') {
+            addLog('WARN', `Wallet not active: ${walletAddress}`);
+            return false;
+        }
+        throw new Error(`Error verifying wallet activation: ${error.response?.data?.message || error.message}`);
+    }
+    return false;
+}
+
+// Helper Function: Fund Wallet for Activation
+async function fundWalletForActivation(walletAddress, token) {
+    status.value = `Funding wallet for activation: ${walletAddress}...`;
+    addLog('INFO', `Funding wallet: ${walletAddress}`);
+
+    try {
+        await axios.post(
+            '/api/testnet/fund-wallet',
+            { walletAddress },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        addLog('INFO', `Wallet funded: ${walletAddress}`);
+    } catch (error) {
+        throw new Error(`Failed to fund wallet: ${error.response?.data?.message || error.message}`);
+    }
+}
+
+// get issuer RLS balance
 async function getIssuerRlsBalance() {
-  if (!client.value || !issuerWallet.value) {
-    return;
-  }
-  status.value = 'Fetching issuer RLS balance...';
-  addLog('INFO', 'Requesting account_lines for issuer...');
+    if (!connected.value) {
+        return;
+    }
+    status.value = 'Fetching issuer RLS balance...';
+    addLog('INFO', 'Requesting issuer RLS balance from backend...');
+  
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            throw new Error('Authentication token not found. Please log in.');
+        }
 
-  try {
-    const lines = await client.value.request({
-      command: 'account_lines',
-      account: issuerWallet.value.classicAddress
-    });
-    addLog('DEBUG', JSON.stringify(lines));
+        const resp = await axios.get('/api/testnet/issuer/balance', {
+            headers: { Authorization: `Bearer ${token}` },
+        });
 
-    const currencyLine = lines.result.lines.find(
-      line => line.currency === CURRENCY_CODE
-    );
-    // e.g., -300 if 300 tokens are in circulation
-    issuerRlsBalance.value = currencyLine ? currencyLine.balance : '0';
-    status.value = `Issuer RLS balance updated to ${issuerRlsBalance.value}`;
-    addLog('INFO', `Issuer RLS: ${issuerRlsBalance.value}`);
-  } catch (error) {
-    status.value = 'Balance fetch failed!';
-    addLog('ERROR', `Failed to get RLS: ${error.message}`);
-    console.error(error);
-  }
+        // Balance is returned in drops; divide by 1,000,000 to convert to XRP
+        const balanceInXRP = parseFloat(resp.data.balance) / 1_000_000;
+
+        issuerRlsBalance.value = `${balanceInXRP.toFixed(6)} XRP`;
+        status.value = `Issuer RLS balance: ${issuerRlsBalance.value}`;
+        addLog('INFO', `Issuer RLS Balance: ${issuerRlsBalance.value}`);
+    } catch (error) {
+        status.value = 'Failed to fetch issuer RLS balance!';
+        const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+        addLog('ERROR', `Failed to get issuer RLS balance: ${errorMessage}`);
+        console.error(error);
+        alert(`Balance Fetch Error: ${errorMessage}`);
+    }
 }
 
-// ----------------------------------------------------------------------------
-// LOAD EMPLOYEE RECORDS
-// ----------------------------------------------------------------------------
+// load employee records
 const employeeRecords = ref([]);
 
 async function loadEmployees() {
-  if (!issuerWallet.value) {
-    addLog('WARN', 'Issuer wallet is required to fetch employee records.');
+  if (!connected.value) {
+    addLog('WARN', 'XRPL not connected. Connect first to load employees.');
     return;
   }
 
@@ -575,67 +604,80 @@ async function loadEmployees() {
   addLog('INFO', 'Fetching employee records from backend...');
 
   try {
-    const token = localStorage.getItem('token'); // Use token for authentication if required
-    const resp = await axios.get('/api/employees', {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Authentication token not found. Please log in.');
+    }
+
+    const resp = await axios.get('/api/testnet/employees', {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    employeeRecords.value = resp.data.map((emp) => ({
+    employeeRecords.value = resp.data.employees.map((emp) => ({
       name: emp.name,
       employee_id: emp.employee_id,
       salary: emp.salary,
       wallet_address: emp.wallet_address,
+      last_transaction: emp.last_transaction,
+      last_transaction_status: emp.last_transaction_status,
+      last_transaction_date: emp.last_transaction_date,
     }));
 
     status.value = 'Employee records loaded.';
-    addLog('INFO', `Loaded ${resp.data.length} employees.`);
+    addLog('INFO', `Loaded ${employeeRecords.value.length} employees.`);
   } catch (error) {
     status.value = 'Failed to load employees.';
-    addLog('ERROR', `Error fetching employees: ${error.message}`);
+    const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+    addLog('ERROR', `Error fetching employees: ${errorMessage}`);
     console.error('Error fetching employees:', error);
+    alert(`Load Employees Error: ${errorMessage}`);
   }
 }
 
-
-// ----------------------------------------------------------------------------
-// LOAD TRANSACTION HISTORY
-// ----------------------------------------------------------------------------
+// load transaction history
 const transactions = ref([]);
 
 async function loadTransactions() {
-  if (!issuerWallet.value) {
+  if (!connected.value) {
     return;
   }
   status.value = 'Loading transaction history...';
   addLog('INFO', 'Fetching transaction history from backend...');
 
   try {
-    const resp = await axios.get('/api/transactions');
-    transactions.value = resp.data;
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Authentication token not found. Please log in.');
+    }
+    const resp = await axios.get('/api/testnet/transactions', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    transactions.value = resp.data.transactions;
     status.value = 'Transaction history loaded.';
-    addLog('INFO', `Loaded ${resp.data.length} transactions.`);
+    addLog('INFO', `Loaded ${transactions.value.length} transactions.`);
   } catch (error) {
     status.value = 'Failed to load transaction history.';
-    addLog('ERROR', `Error fetching transactions: ${error.message}`);
+    const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+    addLog('ERROR', `Error fetching transactions: ${errorMessage}`);
     console.error(error);
+    alert(`Load Transactions Error: ${errorMessage}`);
   }
 }
 
-// ----------------------------------------------------------------------------
-// DISCONNECT
-// ----------------------------------------------------------------------------
+// disconnect from XRPL
 function disconnectXRPL() {
-  if (client.value) {
-    addLog('INFO', 'Disconnecting from XRPL...');
-    client.value.disconnect();
-    client.value = null;
+  if (connected.value) {
+    addLog('INFO', 'Disconnected from XRPL Testnet.');
+    connected.value = false;
+    issuerWallet.value = '';
+    issuerRlsBalance.value = '0';
+    selectedEmployeeWallet.value = '';
+    userLatestTx.value = null;
     status.value = 'Disconnected from XRPL';
   }
 }
 
-// ----------------------------------------------------------------------------
-// CSV IMPORT/EXPORT FUNCTIONS
-// ----------------------------------------------------------------------------
+// import/export CSV
 const fileInput = ref(null);
 
 async function importCsv() {
@@ -655,7 +697,7 @@ async function importCsv() {
       return;
     }
 
-    const response = await axios.post('/api/import-csv', formData, {
+    const response = await axios.post('/api/csv/import', formData, { // Ensure the endpoint matches
       headers: {
         'Content-Type': 'multipart/form-data',
         'Authorization': `Bearer ${token}`
@@ -688,7 +730,7 @@ async function exportCsv() {
       return;
     }
 
-    const response = await axios.get('/api/export-csv', {
+    const response = await axios.get('/api/csv/export', { // Ensure this endpoint exists
       headers: {
         'Authorization': `Bearer ${token}`
       },
@@ -717,15 +759,14 @@ async function exportCsv() {
   }
 }
 
-// ----------------------------------------------------------------------------
-// Lifecycle Hook to Load Data on Mount
-// ----------------------------------------------------------------------------
+// lifecycle hooks
 onMounted(() => {
   decodeToken();
   loadEmployees();
   loadTransactions();
 });
 </script>
+
 
 <style scoped>
 .container {
@@ -734,18 +775,89 @@ onMounted(() => {
   font-family: Arial, sans-serif;
 }
 
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logout-button {
+  padding: 5px 10px;
+  background-color: #cc0000;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  background-color: #990000;
+}
+
+.navigation {
+  margin: 20px 0;
+}
+
+.navigation button {
+  margin-right: 10px;
+  padding: 10px 15px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.navigation button.active,
+.navigation button:hover {
+  background-color: #0056b3;
+}
+
+.admin-navigation {
+  margin-top: 20px;
+}
+
+.admin-navigation button {
+  padding: 10px 20px;
+  background-color: #f0ad4e;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.admin-navigation button:hover {
+  background-color: #ec971f;
+}
+
+.additional-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.additional-links button {
+  padding: 10px 15px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.additional-links button.active,
+.additional-links button:hover {
+  background-color: #218838;
+}
+
 .buttons button {
   margin: 0 10px 10px 0;
-}
-
-.send-section {
-  display: inline-block;
-  margin-left: 10px;
-}
-
-.send-section input {
-  width: 100px;
-  margin: 0 10px;
 }
 
 .wallet-info {
@@ -826,36 +938,14 @@ onMounted(() => {
   color: #cc0000;
 }
 
-/* Admin Navigation Styles */
-.admin-navigation {
-  margin-top: 20px;
+.success {
+  color: green;
+  font-weight: bold;
 }
 
-.admin-navigation button {
-  padding: 10px 20px;
-  background-color: #f0ad4e;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+.failure {
+  color: red;
+  font-weight: bold;
 }
 
-.admin-navigation button:hover {
-  background-color: #ec971f;
-}
-
-/* Admin Interface Styles (Removed Direct Inclusion) */
-/*
-.admin-interface {
-  margin-top: 40px;
-  padding: 20px;
-  border: 2px solid #007bff;
-  border-radius: 8px;
-  background-color: #f9f9f9;
-}
-
-.admin-interface h2 {
-  margin-bottom: 20px;
-}
-*/
 </style>
