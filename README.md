@@ -1,24 +1,17 @@
-# XRPayroll - Idea
-An idea to simplify cross-border payments using RLUSD / XRPL to hedge FIAT exchange fees and speedup payments. 
-
-# Demo
-
-A Proof of Concept (PoC) for a cross-border HR payments solution built on the XRP Ledger (XRPL). This demo shows how to issue and transfer a token (RLUSD) for payroll or other HR use cases, including optional off-ledger business logic (e.g., limiting total issuance).
+# XRPayroll
+Simplify cross-border payments using Ripple's Stablecoin RLUSD via XRPL to hedge FIAT exchange fees and speedup payments. 
 
 ## Features
 
 - **Issuer & Recipient Wallets**: Automatically funded via the XRPL Testnet faucet.  
-- **Default Ripple**: Optionally enable it on the issuer to facilitate IOU transfers.  
 - **Trust Line Creation**: The user “trusts” the issuer’s RLS token.  
-- **Send RLS**: Demonstrates how to create and transfer stablecoin-like tokens on XRPL.  
-- **Off-Ledger Business Logic**: Example of limiting total issuance (max tokens) on the client side.
-- **User Management**: Simple user management interface  
+- **Send Tokens**: Demonstrates how to create and transfer stablecoin-like tokens on XRPL.  
+- **User Management**: Simple user management interface 
+- **100% API**: Backend systems with routing mechanism, API 
+- **RBAC**: Role-basd access, simple yet
+- **SQLLite**: SQL backend, tracking of wallets and funding to ensure persistency  
 
 ## Prerequisites
-
-- **macOS** (this demo uses Homebrew).  
-- **Git**, if you want to clone or version your code.  
-- **XRPL Testnet** connectivity (internet connection).
 ```bash
      npm install xrpl express cors multer csv-parser json2csv sqlite3 concurrently axios dotenv jsonwebtoken fs bcrypt jwt-decode express-validator vue-router@4 helmet morgan express-rate-limit express-sslify sequelize body-parser
 ```
@@ -28,9 +21,7 @@ A Proof of Concept (PoC) for a cross-border HR payments solution built on the XR
      npm run dev
 ```
  
- Go to ```localhost:8080```; password ```admin/adminpassword```
-
-   - Adjust commands as needed for your specific setup.
+ Go to ```http://localhost:8080```; password ```admin/adminpassword```
 
 ## License
 
