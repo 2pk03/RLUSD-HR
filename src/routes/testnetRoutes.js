@@ -482,12 +482,7 @@ router.post('/trustlines/create', authenticateToken, authorizeAdmin, async (req,
  * Send RLUSD tokens to the employee wallet.
  * Admins only.
  */
-/**
- * POST /api/testnet/payments/send
- * 
- * Send RLUSD tokens to the employee wallet.
- * Admins only.
- */
+
 router.post('/payments/send', authenticateToken, authorizeAdmin, async (req, res) => {
   const { employeeWallet, amount } = req.body;
 
@@ -535,12 +530,60 @@ router.post('/payments/send', authenticateToken, authorizeAdmin, async (req, res
 
     if (result.result.meta.TransactionResult === 'tesSUCCESS') {
       console.log(`Payment of ${amount} USD sent successfully to ${employeeWallet}`);
-      res.status(200).json({ message: `Payment of ${amount} RLUSD sent successfully to ${employeeWallet}.` });
+
+      // Log successful transaction in the database
+      const insertQuery = `
+        INSERT INTO transactions (employee_id, amount, wallet_address, status, tx_id)
+        VALUES (
+          (SELECT id FROM employees WHERE wallet_address = ?),
+          ?,
+          ?,
+          'Success',
+          ?
+        )
+      `;
+      db.run(
+        insertQuery,
+        [employeeWallet, amount, employeeWallet, signed.hash],
+        (err) => {
+          if (err) {
+            console.error('Error inserting successful transaction:', err.message);
+          } else {
+            console.log('Transaction logged successfully in the database.');
+          }
+        }
+      );
+
+      return res.status(200).json({ message: `Payment of ${amount} RLUSD sent successfully to ${employeeWallet}.` });
     } else {
       throw new Error(`Transaction failed: ${result.result.meta.TransactionResult}`);
     }
   } catch (error) {
     console.error('Error sending payment:', error.message);
+
+    // Log failed transaction in the database
+    const insertQuery = `
+      INSERT INTO transactions (employee_id, amount, wallet_address, status, tx_id)
+      VALUES (
+        (SELECT id FROM employees WHERE wallet_address = ?),
+        ?,
+        ?,
+        'Failure',
+        NULL
+      )
+    `;
+    db.run(
+      insertQuery,
+      [employeeWallet, amount, employeeWallet],
+      (err) => {
+        if (err) {
+          console.error('Error logging failed transaction:', err.message);
+        } else {
+          console.log('Failed transaction logged in the database.');
+        }
+      }
+    );
+
     res.status(500).json({ message: 'Failed to send payment.', error: error.message });
   }
 });
@@ -654,6 +697,50 @@ router.post('/employees/get-wallet-seed', authenticateToken, authorizeAdmin, asy
     }
 
     res.status(200).json({ walletSeed: row.wallet_seed });
+  });
+});
+
+/**
+ * GET /api/testnet/transactions
+ * 
+ * Fetch all transactions from the database.
+ * Admins only.
+ */
+router.get('/transactions', authenticateToken, authorizeAdmin, async (req, res) => {
+  const query = `
+    SELECT 
+  t.id AS transaction_id,
+  t.employee_id,
+  e.wallet_address,
+  t.amount,
+  t.status,
+  strftime('%m/%d/%Y %H:%M:%S', t.date, 'localtime') AS formatted_date,
+  t.tx_id,
+  u.username AS employee_name
+  FROM transactions t
+  JOIN employees e ON t.employee_id = e.id
+  JOIN users u ON e.userID = u.id
+  ORDER BY t.date DESC;
+  `;
+
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Error fetching transactions:', err.message);
+      return res.status(500).json({ message: 'Database error.', error: err.message });
+    }
+
+    const transactions = rows.map((row) => ({
+      transaction_id: row.transaction_id,
+      employee_id: row.employee_id,
+      employee_name: row.employee_name,
+      amount: row.amount,
+      wallet_address: row.wallet_address,
+      date: new Date(row.date).toLocaleString('en-US'),
+      status: row.status,
+      tx_id: row.tx_id,
+    }));
+
+    res.status(200).json({ transactions });
   });
 });
 

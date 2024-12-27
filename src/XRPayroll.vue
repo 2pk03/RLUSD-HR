@@ -93,7 +93,7 @@
             <th>Employee ID</th>
             <th>Salary (RLUSD)</th>
             <th>Wallet Address</th>
-            <th>Actions</th>
+            <th>Latest TX</th>
           </tr>
         </thead>
         <tbody>
@@ -102,6 +102,7 @@
             <td>{{ emp.employee_id }}</td>
             <td>{{ emp.salary }}</td>
             <td>{{ emp.wallet_address || 'No Wallet' }}</td>
+            <td>{{ emp.latest_transaction || 'No TX (yet)' }}</td>
             <td>
               <button 
                 @click="executeSalary(emp)" 
@@ -613,16 +614,17 @@ async function loadEmployees() {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    employeeRecords.value = resp.data.employees.map((emp) => ({
-      name: emp.name,
-      employee_id: emp.employee_id,
-      salary: emp.salary,
-      wallet_address: emp.wallet_address,
-      last_transaction: emp.last_transaction,
-      last_transaction_status: emp.last_transaction_status,
-      last_transaction_date: emp.last_transaction_date,
-    }));
+    const employees = resp.data.employees;
 
+    // Fetch the latest transaction for each employee
+    for (const employee of employees) {
+      const latestTransaction = await fetchLatestTransaction(employee.employee_id);
+      employee.latest_transaction = latestTransaction
+        ? `${latestTransaction.status} on ${latestTransaction.date}`
+        : 'No transaction available';
+    }
+
+    employeeRecords.value = employees;
     status.value = 'Employee records loaded.';
     addLog('INFO', `Loaded ${employeeRecords.value.length} employees.`);
   } catch (error) {
@@ -634,24 +636,48 @@ async function loadEmployees() {
   }
 }
 
+// fetch latest transaction for an employee
+async function fetchLatestTransaction(employeeID) {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Authentication token not found. Please log in.');
+    }
+
+    const resp = await axios.get(`/api/testnet/employee/${employeeID}/latest-transaction`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    return resp.data.transaction;
+  } catch (error) {
+    addLog('ERROR', `Error fetching latest transaction for employee ${employeeID}: ${error.message}`);
+    console.error(error);
+    return null;
+  }
+}
+
 // load transaction history
 const transactions = ref([]);
 
 async function loadTransactions() {
   if (!connected.value) {
+    addLog('WARN', 'XRPL not connected. Connect first to load transactions.');
     return;
   }
+
   status.value = 'Loading transaction history...';
-  addLog('INFO', 'Fetching transaction history from backend...');
+  addLog('INFO', 'Fetching all transaction history from backend...');
 
   try {
     const token = localStorage.getItem('token');
     if (!token) {
       throw new Error('Authentication token not found. Please log in.');
     }
+
     const resp = await axios.get('/api/testnet/transactions', {
       headers: { Authorization: `Bearer ${token}` },
     });
+
     transactions.value = resp.data.transactions;
     status.value = 'Transaction history loaded.';
     addLog('INFO', `Loaded ${transactions.value.length} transactions.`);
