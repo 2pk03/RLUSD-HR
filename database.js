@@ -95,7 +95,7 @@ db.serialize(() => {
       wallet_address TEXT NOT NULL,
       date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       status TEXT NOT NULL CHECK(status IN ('Success', 'Failure')),
-      tx_id TEXT,
+      tx_id TEXT UNIQUE, -- Ensures transaction hash is unique
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
     )
   `, (err) => {
@@ -120,6 +120,14 @@ db.serialize(() => {
       console.error('Failed to create index on transactions.date:', err.message);
     } else {
       console.log('Index on transactions.date is ready.');
+    }
+  });
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_transactions_tx_id ON transactions(tx_id)`, (err) => {
+    if (err) {
+      console.error('Failed to create index on transactions.tx_id:', err.message);
+    } else {
+      console.log('Index on transactions.tx_id is ready.');
     }
   });
 

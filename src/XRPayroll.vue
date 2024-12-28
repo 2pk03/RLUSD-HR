@@ -30,18 +30,15 @@
       <div class="additional-links">
         <!-- Admin-Only Links -->
         <div v-if="isAdmin">
-          <router-link to="/admin">
-            <button :class="{ active: isActive('/admin') }">Admin Panel</button>
+          <router-link to="/user-management">
+            <button :class="{ active: isActive('/user-management') }">Manage User</button>
           </router-link>
           <router-link to="/trustlines">
             <button :class="{ active: isActive('/trustlines') }">Manage Trust Lines</button>
           </router-link>
           <router-link to="/payments">
             <button :class="{ active: isActive('/payments') }">Handle Payments</button>
-          </router-link>
-          <router-link to="/register">
-            <button :class="{ active: isActive('/register') }">Register User</button>
-          </router-link>
+          </router-link>          
         </div>
 
         <!-- Employee-Only Links -->
@@ -59,7 +56,7 @@
     <div v-if="isAdmin">
       <!-- 1) Connect to Testnet -->
       <button @click="connectXRPL" :disabled="connecting">
-        1) Connect to Testnet
+        Connect to Testnet
       </button>
       <br /><br />
 
@@ -76,16 +73,17 @@
     </div>
   </div>
 
-    <!-- Issuer (Sender) Info -->
+   <!-- Issuer (Sender) Info -->
     <div class="wallet-info">
       <h3>Issuer (Sender) Wallet</h3>
       <p><strong>Address:</strong> {{ issuerWallet || 'N/A' }}</p>
       <p><strong>RLUSD Balance:</strong> {{ issuerRlsBalance }}</p>
     </div>
-    <!-- Employee Records -->
-    <section class="employee-records">
+
+   <!-- Employee Records -->
+    <section class="employee-records">  
       <h2>Employee Records</h2>
-      <button @click="loadEmployees" :disabled="!connected">Refresh Employees</button>
+      <button @click="loadEmployees" :disabled="!connected">Refresh Employees</button>      
       <table v-if="employeeRecords.length">
         <thead>
           <tr>
@@ -94,6 +92,8 @@
             <th>Salary (RLUSD)</th>
             <th>Wallet Address</th>
             <th>Latest TX</th>
+            <th>Dispute</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -104,27 +104,47 @@
             <td>{{ emp.wallet_address || 'No Wallet' }}</td>
             <td>{{ emp.latest_transaction || 'No TX (yet)' }}</td>
             <td>
+              <button @click="traceTransactions" :disabled="traceInProgress || !connected">Trace</button>
+            </td>
+            <td>
               <button 
                 @click="executeSalary(emp)" 
-                :disabled="salaryExecutionInProgress || !connected"
-                >
+                :disabled="salaryExecutionInProgress || !connected">
                 Execute Salary
-          </button>
-
+              </button>              
             </td>
           </tr>
         </tbody>
       </table>
       <p v-else>No employee records available.</p>
     </section>
-    <!-- User (Recipient) Info -->
-    <div class="wallet-info">
-      <h3>User (Recipient) Wallet</h3>
-      <p><strong>Address:</strong> {{ selectedEmployeeWallet || 'N/A' }}</p>
-      <p><strong>Latest RLUSD Transaction:</strong> {{ userLatestTx || 'None' }}</p>
-    </div>
 
-    <!-- CSV Import/Export Section -->
+    <!-- Trace Results -->
+    <section class="trace-results" v-if="traceResults.length">
+  <h2>Trace Results</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Employee</th>
+        <th>TX ID</th>
+        <th>Amount</th>
+        <th>Wallet</th>
+        <th>Received</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr v-for="result in traceResults" :key="result.tx_id">
+        <td>{{ result.employee_name }}</td>
+        <td>{{ result.tx_id }}</td>
+        <td>{{ result.amount }}</td>
+        <td>{{ result.wallet_address }}</td>
+        <td>{{ result.ledger_close_time }}</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- CSV Import/Export -->
     <section class="csv-section">
       <h2>Employee CSV Import/Export</h2>
 
@@ -142,46 +162,6 @@
         <h3>Export Employees to CSV</h3>
         <button @click="exportCsv">Download Employees CSV</button>
       </div>
-    </section>
-
-  <!-- Transaction History -->
-    <section class="transaction-history">
-      <h2>Transaction History</h2>
-      <button @click="loadTransactions" :disabled="!connected">Refresh History</button>
-      <table v-if="transactions.length">
-        <thead>
-          <tr>
-            <th>Name</th>
-    <th>Employee ID</th>
-    <th>Salary (RLUSD)</th>
-    <th>Wallet Address</th>
-    <th>Last Transaction</th>
-    <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-  <tr v-for="emp in employeeRecords" :key="emp.employee_id">
-    <td>{{ emp.name }}</td>
-    <td>{{ emp.employee_id }}</td>
-    <td>{{ emp.salary }}</td>
-    <td>{{ emp.wallet_address || 'No Wallet' }}</td>
-    <td>
-      <span :class="{'success': emp.last_transaction_status === 'Success', 'failure': emp.last_transaction_status !== 'Success'}">
-        {{ formatTransactionDetails(emp) }}
-      </span>
-    </td>
-    <td>
-      <button 
-        @click="executeSalary(emp)" 
-        :disabled="salaryExecutionInProgress || !connected"
-      >
-        Execute Salary
-      </button>
-    </td>
-  </tr>
-</tbody>
-      </table>
-      <p v-else>No transactions found.</p>
     </section>
 
     <!-- Log Level Selector -->
@@ -235,21 +215,6 @@ const logLevels = [
 const selectedLogLevel = ref('DEBUG');
 const logs = ref([]);
 const requestWalletInProgress = ref(false);
-
-function formatTransactionDetails(emp) {
-  if (!emp.last_transaction) {
-    return 'No transaction available';
-  }
-  const formattedDate = new Date(emp.last_transaction_date).toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  return `${emp.last_transaction_status} on ${formattedDate}`;
-}
 
 function addLog(level, message) {
   logs.value.push({
@@ -324,8 +289,13 @@ const selectedEmployeeWallet = ref('');
 
 // Store the issuer's RLS balance
 const issuerRlsBalance = ref('');
+
 // Store the user's latest transaction
 const userLatestTx = ref(null);
+
+// Trace transactions
+const traceResults = ref([]);
+const traceInProgress = ref(false);
 
 // connect to XRPL Testnet
 async function connectXRPL() {
@@ -619,9 +589,16 @@ async function loadEmployees() {
     // Fetch the latest transaction for each employee
     for (const employee of employees) {
       const latestTransaction = await fetchLatestTransaction(employee.employee_id);
-      employee.latest_transaction = latestTransaction
-        ? `${latestTransaction.status} on ${latestTransaction.date}`
-        : 'No transaction available';
+      if (latestTransaction) {
+        employee.latest_transaction = `${latestTransaction.status} on ${latestTransaction.date}`;
+        employee.tx_id = latestTransaction.tx_id; // Ensure tx_id is set
+      } else {
+        employee.latest_transaction = 'No transaction available';
+        employee.tx_id = null; // Set to null if no transaction exists
+      }
+
+      // Initialize dispute property
+      employee.dispute = false;
     }
 
     employeeRecords.value = employees;
@@ -653,6 +630,73 @@ async function fetchLatestTransaction(employeeID) {
     addLog('ERROR', `Error fetching latest transaction for employee ${employeeID}: ${error.message}`);
     console.error(error);
     return null;
+  }
+}
+
+// Trace Transactions
+async function traceTransactions() {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    alert('Please log in.');
+    return;
+  }
+
+  traceInProgress.value = true;
+  traceResults.value = [];
+
+  const employeesToTrace = employeeRecords.value.filter((emp) => emp.tx_id);
+  if (employeesToTrace.length === 0) {
+    addLog('WARN', 'No employees selected for tracing.');
+    traceInProgress.value = false;
+    return;
+  }
+
+  addLog('INFO', `Starting trace for ${employeesToTrace.length} selected employees...`);
+
+  try {
+    for (const emp of employeesToTrace) {
+      addLog('DEBUG', `Tracing transaction for employee: ${emp.name}, TX ID: ${emp.tx_id}`);
+
+      const response = await axios.get(`/api/testnet/transactions/trace/${emp.tx_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // Format the ledger_close_time
+      const rawCloseTime = response.data.ledger_close_time || 'N/A';
+      const formattedCloseTime =
+        rawCloseTime !== 'N/A'
+          ? new Date(rawCloseTime).toLocaleString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: 'numeric',
+              second: 'numeric',
+              hour12: true,
+            })
+          : 'N/A';
+
+      traceResults.value.push({
+        employee_name: emp.name,
+        tx_id: response.data.tx_id,
+        amount: response.data.amount || 'N/A',
+        wallet_address: emp.wallet_address || 'N/A',
+        ledger_close_time: formattedCloseTime,
+      });
+
+      addLog(
+        'INFO',
+        `Successfully traced transaction for employee: ${emp.name}. TX ID: ${response.data.tx_id}, Amount: ${response.data.amount || 'N/A'}, Ledger Close Time: ${formattedCloseTime}`
+      );
+    }
+    addLog('SUCCESS', `Traced ${traceResults.value.length} transactions successfully.`);
+  } catch (error) {
+    console.error('Error tracing transactions:', error.message);
+    addLog('ERROR', `Error tracing transactions: ${error.message}`);
+    alert('Failed to trace transactions.');
+  } finally {
+    traceInProgress.value = false;
+    addLog('INFO', 'Trace process completed.');
   }
 }
 
@@ -796,7 +840,7 @@ onMounted(() => {
 
 <style scoped>
 .container {
-  max-width: 800px;
+  max-width: 80%;
   margin: 40px auto;
   font-family: Arial, sans-serif;
 }
@@ -972,6 +1016,26 @@ onMounted(() => {
 .failure {
   color: red;
   font-weight: bold;
+}
+
+.trace-results {
+  margin-top: 20px;
+  border: 1px solid #ccc;
+  padding: 10px;
+}
+.trace-results h2 {
+  margin-bottom: 10px;
+}
+.trace-results table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.trace-results th, .trace-results td {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+.trace-results th {
+  background-color: #f2f2f2;
 }
 
 </style>

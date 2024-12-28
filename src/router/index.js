@@ -8,8 +8,7 @@ import LoginPage from '../components/LoginPage.vue';
 import NotFound from '../views/NotFound.vue';
 import XRPayroll from '../XRPayroll.vue';
 import EmployeeProfile from '../views/EmployeeProfile.vue';
-import Register from '../views/RegisterUser.vue';
-import Admin from '../views/AdminDashboard.vue';
+import ManageTrustLines from '../components/ManageTrustLines.vue';
 
 // Log the jwtDecode to verify it's correctly imported
 console.log('jwtDecode Imported:', jwtDecode);
@@ -31,24 +30,19 @@ const routes = [
         name: 'EmployeeProfile',
         component: EmployeeProfile,
         meta: { requiresAuth: true, role: 'employee' }
-      },
-      {
-        path: 'register',
-        name: 'Register',
-        component: Register,
-        meta: { requiresAuth: true, role: 'admin' }
-      },
+      },      
       {
         path: 'user-management',
         name: 'UserManagement',
         component: UserManagement,
         meta: { requiresAuth: true, role: 'admin' },
-      },{
-        path: 'admin',
-        name: 'Administration',
-        component: Admin,
-        meta: { requiresAuth: true, role: 'admin' },
       },
+      {
+        path: 'trustlines',
+        name: 'ManageTrustLines',
+        component: ManageTrustLines,
+        meta: { requiresAuth: true, adminOnly: true },
+      },     
     ],
   },
   {

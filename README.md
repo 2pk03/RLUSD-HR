@@ -1,5 +1,6 @@
 # XRPayroll
-Simplify cross-border payments using Ripple's Stablecoin RLUSD via XRPL to hedge FIAT exchange fees and speedup payments. 
+Simplify cross-border payments using Ripple's Stablecoin RLUSD via XRPL to hedge FIAT exchange fees and speedup payments. AGI research project, approx 70% Written with AI (o1 from OpenAI).
+The app uses routes and can be adopted to any blockchain by implementing a new route. Right now it supports XRPL.
 
 ## Features
 

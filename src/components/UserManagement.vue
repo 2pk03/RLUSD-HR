@@ -270,11 +270,36 @@ export default {
 
 <style scoped>
 .user-management-container {
-  max-width: 1000px;
+  max-width: 50%;
   margin: 50px auto;
   padding: 20px;
   border: 1px solid #ccc;
   border-radius: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+table th, table td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: left;
+}
+
+table th {
+  background-color: #f9f9f9;
+  font-weight: bold;
+}
+
+table td {
+  word-wrap: break-word;
+}
+
+.user-management-container table {
+  width: 100%;
 }
 
 .user-management-container h2,
@@ -285,6 +310,7 @@ export default {
 
 .form-group {
   margin-bottom: 15px;
+  max-width: 100%;
 }
 
 label {
@@ -349,7 +375,7 @@ button:hover {
   background-color: #fff;
   padding: 20px;
   border-radius: 8px;
-  width: 600px;
+  max-width: 100%;
   position: relative;
 }
 

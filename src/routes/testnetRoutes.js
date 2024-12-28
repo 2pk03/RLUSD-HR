@@ -21,6 +21,14 @@ const { Client, Wallet } = require('xrpl');
 const router = express.Router();
 const db = require('../../database');
 
+//
+// generic logging
+//
+router.use((err, req, res, next) => {
+  console.error('Unhandled error:', err.stack || err.message || err);
+  res.status(500).json({ message: 'An unexpected error occurred.', error: err.message });
+});
+
 // ----------------------------------------------------------------------------
 // Middleware for Authentication and Authorization
 // ----------------------------------------------------------------------------
@@ -414,12 +422,6 @@ router.get('/employee/:id/latest-transaction', authenticateToken, authorizeAdmin
  * Create a trust line between the issuer and the employee wallet.
  * Admins only.
  */
-/**
- * POST /api/testnet/trustlines/create
- * 
- * Create a trust line between the issuer and the employee wallet.
- * Admins only.
- */
 router.post('/trustlines/create', authenticateToken, authorizeAdmin, async (req, res) => {
   const { employeeWalletSeed, issuerAddress, trustLimit = '1000000' } = req.body;
 
@@ -742,6 +744,310 @@ router.get('/transactions', authenticateToken, authorizeAdmin, async (req, res) 
 
     res.status(200).json({ transactions });
   });
+});
+
+/**
+ * GET /api/testnet/transactions/trace/:tx_id
+ * 
+ * Trace a specific transaction on the XRPL ledger using its transaction ID.
+ * Admins only.
+ */
+router.get('/transactions/trace/:tx_id', authenticateToken, authorizeAdmin, async (req, res) => {
+  const { tx_id } = req.params;
+
+  if (!tx_id) {
+    return res.status(400).json({ message: 'Transaction ID is required.' });
+  }
+
+  try {
+    const xrplClient = getXRPLClient();
+
+    if (!xrplClient.isConnected()) {
+      await xrplClient.connect();
+    }
+
+    // Fetch transaction details using `tx` command
+    const txResponse = await xrplClient.request({
+      command: 'tx',
+      transaction: tx_id,
+    });
+
+    // Log the entire response for debugging
+    console.log('Transaction Response:', JSON.stringify(txResponse.result, null, 2));
+
+    const { meta, validated, ledger_index, tx_json, close_time_iso } = txResponse.result;
+
+    if (!meta || !validated) {
+      return res.status(404).json({ message: 'Transaction not found or not validated yet.' });
+    }
+
+    // Extract delivered amount
+    const deliveredAmount =
+      meta.delivered_amount?.value || (meta.delivered_amount && typeof meta.delivered_amount === 'string' 
+      ? meta.delivered_amount 
+      : 'N/A');
+
+    // Determine ledger close time
+    const ledgerCloseTime =
+      close_time_iso ||
+      (tx_json.date ? new Date((tx_json.date + 946684800) * 1000).toLocaleString('en-US') : 'N/A');
+
+    res.status(200).json({
+      message: 'Transaction traced successfully.',
+      tx_id,
+      status: meta.TransactionResult,
+      ledger_close_time: ledgerCloseTime,
+      ledger_index,
+      amount: deliveredAmount,
+    });
+  } catch (error) {
+    console.error(`Error tracing transaction with ID ${tx_id}:`, error.message);
+    res.status(500).json({
+      message: 'Failed to trace the transaction.',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/testnet/trustlines/:walletAddress
+ * 
+ * Fetch all trust lines for a given wallet address.
+ * Admins only.
+ */
+const { isValidClassicAddress } = require('xrpl'); // Import address validation utility
+
+router.get('/trustlines/:walletAddress', authenticateToken, authorizeAdmin, async (req, res) => {
+  const { walletAddress } = req.params;
+
+  // Validate the wallet address
+  if (!walletAddress || !isValidClassicAddress(walletAddress)) {
+    console.error(`Invalid wallet address provided: ${walletAddress}`);
+    return res.status(400).json({ message: 'Invalid or missing wallet address.' });
+  }
+
+  try {
+    const xrplClient = getXRPLClient();
+
+    // Connect to the XRPL Testnet if not already connected
+    if (!xrplClient.isConnected()) {
+      await xrplClient.connect();
+      console.log('Connected to XRPL Testnet');
+    }
+
+    console.log(`Fetching trust lines for wallet address: ${walletAddress}`);
+
+    // Fetch trust lines for the given wallet
+    const accountLinesResponse = await xrplClient.request({
+      command: 'account_lines',
+      account: walletAddress,
+    });
+
+    // Log the response for debugging
+    console.log(`Trust lines for ${walletAddress}:`, JSON.stringify(accountLinesResponse.result.lines, null, 2));
+
+    res.status(200).json({
+      message: 'Trust lines fetched successfully.',
+      trustLines: accountLinesResponse.result.lines,
+    });
+  } catch (error) {
+    // Log detailed error for debugging
+    console.error(`Error fetching trust lines for wallet ${walletAddress}:`, error.message);
+    console.error('Full error:', error);
+
+    // Handle specific XRPL errors or default to generic error message
+    const errorMessage = error.data?.error_message || error.message || 'Failed to fetch trust lines.';
+    res.status(500).json({ message: 'Failed to fetch trust lines.', error: errorMessage });
+  }
+});
+
+/**
+ * POST /api/testnet/trustlines
+ * 
+ * Create a trust line between the issuer and the employee wallet.
+ * Admins only.
+ */
+router.post('/trustlines', authenticateToken, authorizeAdmin, async (req, res) => {
+  const { walletSeed, currency, limit } = req.body;
+
+  if (!walletSeed || !currency || !limit) {
+    return res.status(400).json({ message: 'Wallet seed, currency, and limit are required.' });
+  }
+
+  try {
+    const xrplClient = getXRPLClient();
+
+    if (!xrplClient.isConnected()) {
+      await xrplClient.connect();
+    }
+
+    const wallet = Wallet.fromSeed(walletSeed);
+
+    // Prepare TrustSet transaction
+    const trustSetTx = {
+      TransactionType: 'TrustSet',
+      Account: wallet.classicAddress,
+      LimitAmount: {
+        currency,
+        issuer: xrplClient.issuerWallet.address,
+        value: limit,
+      },
+    };
+
+    const prepared = await xrplClient.autofill(trustSetTx);
+    const signed = wallet.sign(prepared);
+    const result = await xrplClient.submitAndWait(signed.tx_blob);
+
+    if (result.result.meta.TransactionResult === 'tesSUCCESS') {
+      res.status(200).json({ message: 'Trust line created successfully.' });
+    } else {
+      throw new Error(`Failed to create trust line: ${result.result.meta.TransactionResult}`);
+    }
+  } catch (error) {
+    console.error('Error creating trust line:', error.message);
+    res.status(500).json({ message: 'Failed to create trust line.', error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/testnet/trustlines
+ * 
+ * Remove a trust line between the issuer and the employee wallet.
+ * Admins only.
+ */
+router.delete('/trustlines', authenticateToken, authorizeAdmin, async (req, res) => {
+  const { walletSeed, currency } = req.body;
+
+  if (!walletSeed || !currency) {
+    return res.status(400).json({ message: 'Wallet seed and currency are required.' });
+  }
+
+  try {
+    const xrplClient = getXRPLClient();
+
+    if (!xrplClient.isConnected()) {
+      await xrplClient.connect();
+    }
+
+    const wallet = Wallet.fromSeed(walletSeed);
+
+    // Prepare TrustSet transaction to remove the trust line
+    const trustSetTx = {
+      TransactionType: 'TrustSet',
+      Account: wallet.classicAddress,
+      LimitAmount: {
+        currency,
+        issuer: xrplClient.issuerWallet.address,
+        value: '0', // Setting the limit to 0 removes the trust line
+      },
+    };
+
+    const prepared = await xrplClient.autofill(trustSetTx);
+    const signed = wallet.sign(prepared);
+    const result = await xrplClient.submitAndWait(signed.tx_blob);
+
+    if (result.result.meta.TransactionResult === 'tesSUCCESS') {
+      res.status(200).json({ message: 'Trust line removed successfully.' });
+    } else {
+      throw new Error(`Failed to remove trust line: ${result.result.meta.TransactionResult}`);
+    }
+  } catch (error) {
+    console.error('Error removing trust line:', error.message);
+    res.status(500).json({ message: 'Failed to remove trust line.', error: error.message });
+  }
+});
+
+/**
+ * GET /api/testnet/employees/trustlines
+ * 
+ * Fetch employees and check if their wallets have trustlines with the issuer wallet.
+ * Admins only.
+ */
+router.get('/employees/trustlines', authenticateToken, authorizeAdmin, async (req, res) => {
+  console.log('Route hit: /employees/trustlines'); // Log when the route is accessed
+  try {
+    const xrplClient = getXRPLClient();
+
+    if (!xrplClient.isConnected()) {
+      console.log('Connecting to XRPL Testnet...');
+      await xrplClient.connect();
+    }
+
+    console.log('Connected to XRPL Testnet.');
+
+    if (!xrplClient.issuerWallet) {
+      console.log('Issuer wallet is not initialized.');
+      return res.status(500).json({ message: 'Issuer wallet is not initialized. Please connect first.' });
+    }
+
+    console.log('Issuer Wallet Address:', xrplClient.issuerWallet.address);
+
+    // Fetch employee wallets from the database
+    const query = `
+      SELECT e.wallet_address, u.username AS name
+      FROM employees e
+      JOIN users u ON e.userID = u.id
+      WHERE e.wallet_address IS NOT NULL
+    `;
+    console.log('Querying database for employee wallets...');
+    db.all(query, [], async (err, rows) => {
+      if (err) {
+        console.error('Error querying database:', err.message);
+        return res.status(500).json({ message: 'Database error.', error: err.message });
+      }
+
+      console.log('Employee wallets fetched from database:', rows);
+
+      if (rows.length === 0) {
+        console.warn('No employee wallets found in the database.');
+        return res.status(200).json({ message: 'No employees with wallets found.', trustLines: [] });
+      }
+
+      const trustLines = [];
+      for (const employee of rows) {
+        try {
+          console.log(`Fetching trust lines for wallet: ${employee.wallet_address}`);
+          const accountLinesResponse = await xrplClient.request({
+            command: 'account_lines',
+            account: employee.wallet_address,
+          });
+
+          console.log(`Trust lines for ${employee.wallet_address}:`, accountLinesResponse.result.lines);
+
+          const lines = accountLinesResponse.result.lines;
+          const trustedWallets = lines.map((line) => ({
+            account: line.account,
+            limit: line.limit || 'N/A',
+          }));
+
+          const trustsIssuer = lines.some((line) => line.account === xrplClient.issuerWallet.address);
+
+          trustLines.push({
+            employee_name: employee.name,
+            wallet_address: employee.wallet_address,
+            trusts_issuer: trustsIssuer,
+            trusted_wallets: trustedWallets,
+          });
+        } catch (error) {
+          console.error(`Error fetching trust lines for wallet ${employee.wallet_address}:`, error.message);
+          trustLines.push({
+            employee_name: employee.name,
+            wallet_address: employee.wallet_address,
+            trusts_issuer: false,
+            trusted_wallets: [],
+            error: error.message,
+          });
+        }
+      }
+
+      console.log('Trust lines fetched for all employees:', trustLines);
+
+      res.status(200).json({ trustLines });
+    });
+  } catch (error) {
+    console.error('Unhandled error in /employees/trustlines:', error.message);
+    res.status(500).json({ message: 'Failed to fetch trust lines.', error: error.message });
+  }
 });
 
 module.exports = router;
